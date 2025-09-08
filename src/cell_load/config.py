@@ -14,7 +14,7 @@ class ExperimentConfig:
     """Configuration for perturbation experiments from TOML file."""
 
     # Dataset paths
-    datasets: dict[str, str]
+    datasets: dict[str, Union[str, list[str]]]
 
     # Training datasets (entire datasets)
     training: dict[str, str]
@@ -28,15 +28,21 @@ class ExperimentConfig:
     @classmethod
     def from_toml(cls, toml_path: str) -> "ExperimentConfig":
         """Load configuration from TOML file."""
-        with open(toml_path, "r") as f:
-            config = toml.load(f)
+            with open(toml_path, "r") as f:
+                config = toml.load(f)
 
-        return cls(
-            datasets=config.get("datasets", {}),
-            training=config.get("training", {}),
-            zeroshot=config.get("zeroshot", {}),
-            fewshot=config.get("fewshot", {}),
-        )
+            # Convert dataset entries to lists if they aren't already
+            datasets = {
+                k: v if isinstance(v, list) else [v]
+                for k, v in config.get("datasets", {}).items()
+            }
+
+            return cls(
+                datasets=datasets,
+                training=config.get("training", {}),
+                zeroshot=config.get("zeroshot", {}),
+                fewshot=config.get("fewshot", {}),
+            )
 
     def get_all_datasets(self) -> Set[str]:
         """Get all dataset names referenced in config."""
@@ -83,10 +89,10 @@ class ExperimentConfig:
             raise ValueError(f"Missing dataset paths for: {missing_paths}")
 
         # Check that dataset paths exist
-        for dataset, path in self.datasets.items():
-            print(path)
-            if not Path(path).exists():
-                logger.warning(f"Dataset path does not exist: {path}")
+        for dataset, paths in self.datasets.items():
+            for path in paths:
+                if not Path(path).exists():
+                    logger.warning(f"Dataset path does not exist: {path}")
 
         # Validate splits are valid
         valid_splits = {"train", "val", "test"}
