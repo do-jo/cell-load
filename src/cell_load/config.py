@@ -28,21 +28,21 @@ class ExperimentConfig:
     @classmethod
     def from_toml(cls, toml_path: str) -> "ExperimentConfig":
         """Load configuration from TOML file."""
-            with open(toml_path, "r") as f:
-                config = toml.load(f)
+        with open(toml_path, "r") as f:
+            config = toml.load(f)
 
-            # Convert dataset entries to lists if they aren't already
-            datasets = {
-                k: v if isinstance(v, list) else [v]
-                for k, v in config.get("datasets", {}).items()
-            }
+        # Convert dataset entries to lists if they aren't already
+        datasets = {
+            k: v if isinstance(v, list) else [v]
+            for k, v in config.get("datasets", {}).items()
+        }
 
-            return cls(
-                datasets=datasets,
-                training=config.get("training", {}),
-                zeroshot=config.get("zeroshot", {}),
-                fewshot=config.get("fewshot", {}),
-            )
+        return cls(
+            datasets=datasets,
+            training=config.get("training", {}),
+            zeroshot=config.get("zeroshot", {}),
+            fewshot=config.get("fewshot", {}),
+        )
 
     def get_all_datasets(self) -> Set[str]:
         """Get all dataset names referenced in config."""
