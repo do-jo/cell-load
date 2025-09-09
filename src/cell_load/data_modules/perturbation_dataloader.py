@@ -393,28 +393,34 @@ class PerturbationDataModule(LightningDataModule):
         all_celltypes = set()
 
         for dataset_name in self.config.get_all_datasets():
-            dataset_path = Path(self.config.datasets[dataset_name])
-            files = self._find_dataset_files(dataset_path)
+            dataset_paths = self.config.datasets[dataset_name]
 
-            for _fname, fpath in files.items():
-                with h5py.File(fpath, "r") as f:
-                    pert_arr = f[f"obs/{self.pert_col}/categories"][:]
-                    perts = set(safe_decode_array(pert_arr))
-                    all_perts.update(perts)
+            if not isinstance(dataset_paths, list):
+                dataset_paths = [dataset_paths]
 
-                    try:
-                        batch_arr = f[f"obs/{self.batch_col}/categories"][:]
-                    except KeyError:
-                        batch_arr = f[f"obs/{self.batch_col}"][:]
-                    batches = set(safe_decode_array(batch_arr))
-                    all_batches.update(batches)
+            for path_str in dataset_paths:
+                dataset_path = Path(path_str)
+                files = self._find_dataset_files(dataset_path)
 
-                    try:
-                        celltype_arr = f[f"obs/{self.cell_type_key}/categories"][:]
-                    except KeyError:
-                        celltype_arr = f[f"obs/{self.cell_type_key}"][:]
-                    celltypes = set(safe_decode_array(celltype_arr))
-                    all_celltypes.update(celltypes)
+                for _fname, fpath in files.items():
+                    with h5py.File(fpath, "r") as f:
+                        pert_arr = f[f"obs/{self.pert_col}/categories"][:]
+                        perts = set(safe_decode_array(pert_arr))
+                        all_perts.update(perts)
+
+                        try:
+                            batch_arr = f[f"obs/{self.batch_col}/categories"][:]
+                        except KeyError:
+                            batch_arr = f[f"obs/{self.batch_col}"][:]
+                        batches = set(safe_decode_array(batch_arr))
+                        all_batches.update(batches)
+
+                        try:
+                            celltype_arr = f[f"obs/{self.cell_type_key}/categories"][:]
+                        except KeyError:
+                            celltype_arr = f[f"obs/{self.cell_type_key}"][:]
+                        celltypes = set(safe_decode_array(celltype_arr))
+                        all_celltypes.update(celltypes)
 
         # Create one-hot maps
         if self.perturbation_features_file:
@@ -483,10 +489,11 @@ class PerturbationDataModule(LightningDataModule):
         Set up training datasets with proper handling of zeroshot/fewshot splits w/ TOML.
         Uses H5MetadataCache for faster metadata access.
         """
-
+        
         for dataset_name in self.config.get_all_datasets():
-            dataset_path = Path(self.config.datasets[dataset_name])
-            files = self._find_dataset_files(dataset_path)
+            dataset_paths = self.config.datasets[dataset_name]
+            if not isinstance(dataset_paths, list):
+                dataset_paths = [dataset_paths]
 
             # Get configuration for this dataset
             zeroshot_celltypes = self.config.get_zeroshot_celltypes(dataset_name)
@@ -497,60 +504,64 @@ class PerturbationDataModule(LightningDataModule):
             logger.info(f"  - Training dataset: {is_training_dataset}")
             logger.info(f"  - Zeroshot cell types: {list(zeroshot_celltypes.keys())}")
             logger.info(f"  - Fewshot cell types: {list(fewshot_celltypes.keys())}")
+            
+            for path_str in dataset_paths:
+                dataset_path = Path(path_str)
+                files = self._find_dataset_files(dataset_path)
 
-            # Process each file in the dataset
-            for fname, fpath in tqdm(
-                list(files.items()), desc=f"Processing {dataset_name}"
-            ):
-                # Create metadata cache
-                cache = GlobalH5MetadataCache().get_cache(
-                    str(fpath),
-                    self.pert_col,
-                    self.cell_type_key,
-                    self.control_pert,
-                    self.batch_col,
-                )
-
-                # Create base dataset
-                ds = self._create_base_dataset(dataset_name, fpath)
-                train_sum = val_sum = test_sum = 0
-
-                # Process each cell type in this file
-                for ct_idx, ct in enumerate(cache.cell_type_categories):
-                    ct_mask = cache.cell_type_codes == ct_idx
-                    n_cells = np.sum(ct_mask)
-
-                    if n_cells == 0:
-                        continue
-
-                    ct_indices = np.where(ct_mask)[0]
-
-                    # Split into control and perturbed indices
-                    ctrl_mask = cache.pert_codes[ct_indices] == cache.control_pert_code
-                    ctrl_indices = ct_indices[ctrl_mask]
-                    pert_indices = ct_indices[~ctrl_mask]
-
-                    # Determine how to handle this cell type
-                    counts = self._process_celltype(
-                        ds,
-                        ct,
-                        ct_indices,
-                        ctrl_indices,
-                        pert_indices,
-                        cache,
-                        dataset_name,
-                        zeroshot_celltypes,
-                        fewshot_celltypes,
-                        is_training_dataset,
+                # Process each file in the dataset
+                for fname, fpath in tqdm(
+                    list(files.items()), desc=f"Processing {dataset_name}"
+                ):
+                    # Create metadata cache
+                    cache = GlobalH5MetadataCache().get_cache(
+                        str(fpath),
+                        self.pert_col,
+                        self.cell_type_key,
+                        self.control_pert,
+                        self.batch_col,
                     )
 
-                    train_sum += counts["train"]
-                    val_sum += counts["val"]
-                    test_sum += counts["test"]
+                    # Create base dataset
+                    ds = self._create_base_dataset(dataset_name, fpath)
+                    train_sum = val_sum = test_sum = 0
 
-                tqdm.write(
-                    f"Processed {fname}: {train_sum} train, {val_sum} val, {test_sum} test"
-                )
+                    # Process each cell type in this file
+                    for ct_idx, ct in enumerate(cache.cell_type_categories):
+                        ct_mask = cache.cell_type_codes == ct_idx
+                        n_cells = np.sum(ct_mask)
+
+                        if n_cells == 0:
+                            continue
+
+                        ct_indices = np.where(ct_mask)[0]
+
+                        # Split into control and perturbed indices
+                        ctrl_mask = cache.pert_codes[ct_indices] == cache.control_pert_code
+                        ctrl_indices = ct_indices[ctrl_mask]
+                        pert_indices = ct_indices[~ctrl_mask]
+
+                        # Determine how to handle this cell type
+                        counts = self._process_celltype(
+                            ds,
+                            ct,
+                            ct_indices,
+                            ctrl_indices,
+                            pert_indices,
+                            cache,
+                            dataset_name,
+                            zeroshot_celltypes,
+                            fewshot_celltypes,
+                            is_training_dataset,
+                        )
+
+                        train_sum += counts["train"]
+                        val_sum += counts["val"]
+                        test_sum += counts["test"]
+
+                    tqdm.write(
+                        f"Processed {fname}: {train_sum} train, {val_sum} val, {test_sum} test"
+                    )
 
             logger.info("\n")
 

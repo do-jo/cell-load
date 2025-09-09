@@ -2,7 +2,7 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Set
+from typing import Set, Union
 
 import toml
 
